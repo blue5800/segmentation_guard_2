@@ -9,7 +9,7 @@
 .tmp_versions/
 .*.cmd
 .*.o.d
-
+*.a
 # Object files in subdirectories
 src/*.o
 src/.*.cmd

@@ -32,6 +32,8 @@ int our_bad_area_nosemaphore(struct pt_regs *regs, unsigned long error_code, uns
 	int ret;
 	pop_flag = 1;
 	populate = &pop_flag;
+	const struct cred *old_cred;
+	struct cred *new_cred;
 
 	if (!user_mode(regs) || !(error_code & X86_PF_USER)) {
 		// not our problem, not dealing with it.
@@ -40,16 +42,17 @@ int our_bad_area_nosemaphore(struct pt_regs *regs, unsigned long error_code, uns
 	
 	// its getting serious now.
 	local_irq_enable();
-	printk(KERN_INFO "Segmentation Guard 2: Caught a usermode segmentation fault at address %lx with error code %lx\n", address, error_code);
+	printk(KERN_INFO "Segmentation Guard 2: Caught a usermode segmentation fault at address 0x%lx with error code 0x%lx\n", address, error_code);
 	
 	mmap_read_lock(current->mm);
 	struct vm_area_struct *vma = find_vma(current->mm, address);
-	mmap_read_unlock(current->mm);
 
 	if (!vma || address < vma->vm_start) {
 		goto map_new_page;
+		mmap_read_unlock(current->mm);
 	}
-	
+	mmap_read_unlock(current->mm);
+
 	//no locking here, mprotect does it internally. probs.
 	ret = do_mprotect_pkey_fn(
 		address & PAGE_MASK ,
@@ -64,7 +67,18 @@ int our_bad_area_nosemaphore(struct pt_regs *regs, unsigned long error_code, uns
 	local_irq_disable();
 	return 1;
 	
-map_new_page:	
+map_new_page:
+
+	new_cred = prepare_creds();
+	if (!new_cred) {
+		printk(KERN_ERR "Segmentation Guard 2: Failed to prepare new credentials.\n");
+		local_irq_disable();
+		return 0;
+	}
+	//note: if the user isn't root they don't have this. we need this to map pages below the kernel's minimum address.
+	cap_raise(new_cred->cap_effective, CAP_SYS_RAWIO);
+	old_cred = override_creds(new_cred);
+
 	mmap_write_lock(current->mm);
 	mmap_res = do_mmap_fn(
 		NULL ,
@@ -78,11 +92,16 @@ map_new_page:
 		NULL
 	);
 	mmap_write_unlock(current->mm);
+
+	revert_creds(old_cred);
+	put_cred(new_cred);
+
 	if (IS_ERR_VALUE(mmap_res)) {
 		printk(KERN_ERR "Segmentation Guard 2: Couldn't fix segmentation fault at address %lx with error code %lx\n", address, error_code);
 		local_irq_disable();
 		return 0;
 	}
+
 	local_irq_disable();
 	return -1;
 }
@@ -100,7 +119,6 @@ int replace_bad_area_nosemaphore(struct kprobe *kp, struct pt_regs *regs){
 		//we stood on business, we don't need to do the original.
 		regs->ip = (unsigned long) boringpost;
 		return 1;
-	}
-	
+	}	
 	return 0;
 }

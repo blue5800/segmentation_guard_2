@@ -6,7 +6,6 @@
 
 unsigned long bad_area_nosemaphore_addr, do_mprotect_pkey_addr, do_mmap_addr;
 
-
 static unsigned long lookup_kallsyms_lookup_name(const char *name) {
 	struct kprobe kp;
 	unsigned long addr;
@@ -38,7 +37,7 @@ static int segmentation_guard_2_init(void) {
 	do_mmap_addr = lookup_kallsyms_lookup_name("do_mmap");
 
 	if (!bad_area_nosemaphore_addr || !do_mprotect_pkey_addr || !do_mmap_addr) {
-		printk(KERN_ERR "Segmentation Guard 2: Failed to find needed symbols\n");
+		printk(KERN_ERR "Segmentation Guard 2: Failed to resolve needed symbols\n");
 		return -ENOENT;
 	}
 	printk(KERN_INFO "Segmentation Guard 2: Found __bad_area_nosemaphore at %lx\nFound do_mprotect_pkey at %lx\nFound do_mmap at %lx\n", bad_area_nosemaphore_addr, do_mprotect_pkey_addr, do_mmap_addr);
@@ -56,7 +55,7 @@ static int segmentation_guard_2_init(void) {
 }
 
 static void segmentation_guard_2_exit(void) {
-	unregister_kprobe(&bad_area_nosemaphore_kp);	
+	unregister_kprobe(&bad_area_nosemaphore_kp);
 	printk(KERN_INFO "Segmentation Guard 2: Module unloaded successfully\n");
 }
 
