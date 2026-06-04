@@ -46,12 +46,12 @@ int our_bad_area_nosemaphore(struct pt_regs *regs, unsigned long error_code, uns
 	
 	mmap_read_lock(current->mm);
 	struct vm_area_struct *vma = find_vma(current->mm, address);
+	mmap_read_unlock(current->mm);
 
+	// trust me, do NOT unlock any later than this. i've tried :3
 	if (!vma || address < vma->vm_start) {
 		goto map_new_page;
-		mmap_read_unlock(current->mm);
 	}
-	mmap_read_unlock(current->mm);
 
 	//no locking here, mprotect does it internally. probs.
 	ret = do_mprotect_pkey_fn(
