@@ -1,0 +1,5 @@
+config SEGMENTATION_GUARD_2
+	tristate "Segmentation Guard 2 support"
+	help
+		adds support for Segmentation Guard 2: a kernel module which resolves segmentation faults in userspace applications by giving the faulting processes exactly what memory they want.
+

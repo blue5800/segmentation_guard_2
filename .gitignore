@@ -1,0 +1,26 @@
+# Linux Kernel Module Build Artifacts
+*.ko
+*.o
+*.mod
+*.mod.c
+*.mod.o
+*.order
+*.symvers
+.tmp_versions/
+.*.cmd
+.*.o.d
+
+# Object files in subdirectories
+src/*.o
+src/.*.cmd
+src/.*.o.d
+
+# General temporary files
+*~
+*.swp
+*.bak
+
+# IDE and Project specific
+.vscode/
+.idea/
+.DS_Store
