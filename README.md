@@ -43,11 +43,16 @@ sudo rmmod segmentation_guard_2
 
 Alternatively: it can be built in-tree by sourcing the Kconfig, and enabling the module in your defconfig. 
 
+## Examples:
+See examples/ for examples of userspace programs which this module "fixes"
+Small standalone programs which require no special linkage therefore I omitted a Makefile for these.
+
 ## Limitations:
 1. The kernel module has only been tested on linux-7.1-rc6 and 7.0.11-arch1-1. if the internal ABI in your kernel is different, it won't work and it will likely crash spectacularly.
-2. Depending on your kernel's implementation of do_mmap, it might fail on the 0th page, which means that a null pointer dereference will still segfault.
 3. You tell me.
 
+## Future plans:
+I might add a per-process opt-in system so that loading the module doesn't literally set every running process' memory security back 30 years. Undecided. But I've kind of accomplished what i wanted to with this, so I cannot guarantee any furhter work.
 
 ## License
 GPL
