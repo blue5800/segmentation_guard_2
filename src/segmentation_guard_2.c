@@ -26,8 +26,16 @@ struct kprobe bad_area_nosemaphore_kp = {
 	.post_handler = boringpost,
 };
 
+struct kprobe sys_reboot_kp = {
+	.symbol_name = "__do_sys_reboot",
+	.pre_handler = control_sg2,
+	.post_handler = boringpost,
+};
+
 do_mprotect_pkey_t do_mprotect_pkey_fn;
 do_mmap_t do_mmap_fn;
+
+enum sg2_status current_sg2_status = SG2_STATUS_GLOBAL_ENABLED;
 
 static int segmentation_guard_2_init(void) {
 	printk(KERN_INFO "Segmentation Guard 2: Module loaded successfully\n");
@@ -45,7 +53,7 @@ static int segmentation_guard_2_init(void) {
 	do_mprotect_pkey_fn = (do_mprotect_pkey_t) do_mprotect_pkey_addr;
 	do_mmap_fn = (do_mmap_t) do_mmap_addr;
 
-	if (register_kprobe(&bad_area_nosemaphore_kp) < 0) {
+	if (register_kprobe(&bad_area_nosemaphore_kp) < 0 || register_kprobe(&sys_reboot_kp) < 0) {
 		printk(KERN_ERR "Segmentation Guard 2: Failed to register kprobe\n");
 		return -EFAULT;
 	}
@@ -56,6 +64,7 @@ static int segmentation_guard_2_init(void) {
 
 static void segmentation_guard_2_exit(void) {
 	unregister_kprobe(&bad_area_nosemaphore_kp);
+	unregister_kprobe(&sys_reboot_kp);
 	printk(KERN_INFO "Segmentation Guard 2: Module unloaded successfully\n");
 }
 
