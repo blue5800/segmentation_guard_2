@@ -7,6 +7,10 @@
 #include "sg2_control.h"
 #include "proc_tracker.h"
 
+#ifndef CONFIG_X86
+#error "This module is only supported on x86 architectures"
+#endif
+
 unsigned long bad_area_nosemaphore_addr, do_mprotect_pkey_addr, do_mmap_addr;
 
 static unsigned long lookup_kallsyms_lookup_name(const char *name) {
@@ -61,24 +65,24 @@ static int segmentation_guard_2_init(void) {
 	do_mmap_fn = (do_mmap_t) do_mmap_addr;
 
 	if (register_kprobe(&bad_area_nosemaphore_kp) < 0) {
-		printk(KERN_ERR "Segmentation Guard 2: Failed to register kprobe\n");
+		printk(KERN_ERR "Segmentation Guard 2: Failed to register __bad_area_nosemaphore kprobe\n");
 		return -EFAULT;
 	}
 
 	if (register_kprobe(&sys_reboot_kp) < 0) {
-		printk(KERN_ERR "Segmentation Guard 2: Failed to register kprobe\n");
+		printk(KERN_ERR "Segmentation Guard 2: Failed to register __do_sys_reboot kprobe\n");
 		unregister_kprobe(&bad_area_nosemaphore_kp);
 		return -EFAULT;
 	}
 
 	if (register_kprobe(&do_exit_kp) < 0) {
-		printk(KERN_ERR "Segmentation Guard 2: Failed to register tracepoint\n");
+		printk(KERN_ERR "Segmentation Guard 2: Failed to register do_exit kprobe\n");
 		unregister_kprobe(&bad_area_nosemaphore_kp);
 		unregister_kprobe(&sys_reboot_kp);
 		return -EFAULT;
 	}
 
-	printk(KERN_INFO "Segmentation Guard 2: Kprobe registered successfully\n");
+	printk(KERN_INFO "Segmentation Guard 2: Kprobes registered successfully\n");
 	return 0;
 }
 
@@ -90,7 +94,7 @@ static void segmentation_guard_2_exit(void) {
 	printk(KERN_INFO "Segmentation Guard 2: Module unloaded successfully\n");
 }
 
-MODULE_DESCRIPTION("Segmentation Guard 2: A kernel module to fix segmentation faults");
+MODULE_DESCRIPTION("Segmentation Guard 2: A kernel module to \"fix\" segmentation faults");
 MODULE_AUTHOR("blue5800");
 MODULE_LICENSE("GPL");
 

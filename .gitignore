@@ -24,3 +24,7 @@ src/.*.o.d
 .vscode/
 .idea/
 .DS_Store
+
+#specific
+userspace/examples/main
+userspace/sg2ctl/sg2ctl

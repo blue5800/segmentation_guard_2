@@ -14,6 +14,12 @@
 4.  **Resource Exhaustion:** A program with a memory leak or an infinite loop that touches new memory will no longer crash. Instead, it will keep asking the kernel for more pages until your system runs out of memory (OOM).
 5.  **Kernel Instability:** The module hooks deep into the x86 page fault handling path (`__bad_area_nosemaphore`) using kprobes. It manually toggles interrupts and calls complex memory management functions (`do_mmap`, `do_mprotect_pkey`) from contexts where they may not be safe, potentially leading to kernel panics or deadlocks.
 
+### Why i built it anyways:
+
+1. [**Rule of cool:**](https://tvtropes.org/pmwiki/pmwiki.php/Main/RuleOfCool) This is objectively cool.
+2. **Sequel to an existing project:** I previously wrote a userspace library `segmentation_guard` which skipped faulting instructions by decoding them in a signal handler and incrementing the IP past them. This was dependent on hacks like forcing the IP to point to a `ret` instruction when the code jumped to invalid memory, but there were ultimately many avenues to cause a SIGSEGV that couldn't be handled in that library. ring 0 grants us much greater flexibility in this regard, though.
+3. **point number 3.**
+
 ---
 
 ## Technical Overview
@@ -27,7 +33,7 @@ When a usermode fault is detected:
 
 The original kernel fault handler is then bypassed, and the process resumes as if nothing went wrong.
 
-SG2 also uses `kprobes` to intercept the `sys_reboot` syscall to use this as a control interface for the module. It allows for a root process to choose whether SG2 is enabled globally, disabled, or enabled per process. in per-process mode, Regular processes can also add and remove themselves from the per process whitelist. I chose to implement this control through this `sys_reboot` interface for no reason other than to save mmyself from the boilerplate of using ioctl or a character device. 
+SG2 also uses `kprobes` to intercept the `sys_reboot` syscall to use this as a control interface for the module. I chose to implement this control through this `sys_reboot` interface for no reason other than to save mmyself from the boilerplate of using ioctl or a character device. 
 
 SG2 hooks `do_exit` to remove dead processes from its internal state, preventing reused PIDs from being automatically "guarded"
 
@@ -54,11 +60,15 @@ sudo rmmod segmentation_guard_2
 Alternatively: it can be built in-tree by sourcing the Kconfig, and enabling the module in your defconfig. 
 
 ## Examples:
-See examples/ for examples of userspace programs which this module "fixes"
-Small standalone programs which require no special linkage therefore I omitted a Makefile for these.
+See userspace/examples/ for examples of userspace programs which this module "fixes"
+Small standalone program(s) which require no special linkage therefore I omitted a Makefile for these.
+
+## sg2ctl:
+Small C program which can be used to control and read the active SG2 mode.
 
 ## Limitations:
 1. The kernel module has only been tested on linux-7.1-rc6 and 7.0.11-arch1-1. if the internal ABI in your kernel is different, it won't work and it will likely crash spectacularly.
+2. SG2 only works on specific architectures. I only support X86_64, it will likely work on X86 but I have not tested it. Anything else is guaranteed to not work. 
 3. You tell me.
 
 ## License

@@ -116,8 +116,6 @@ int replace_bad_area_nosemaphore(struct kprobe *kp, struct pt_regs *regs){
 	else if (current_sg2_status == SG2_STATUS_PER_PROCESS_ENABLED && !is_sg2_enabled_for_pid(current->pid))
 		return 0;
 
-//todo: pid check if current_sg2_status == SG2_STATUS_PID_ENABLED
-
 	struct pt_regs *original = (struct pt_regs *) regs_get_kernel_argument(regs, 0);
 	unsigned long error_code = regs_get_kernel_argument(regs, 1);
 	unsigned long address = regs_get_kernel_argument(regs, 2);
@@ -126,7 +124,7 @@ int replace_bad_area_nosemaphore(struct kprobe *kp, struct pt_regs *regs){
 
 
 	if(our_bad_area_nosemaphore(original, error_code, address, pkey, si_code)){
-		//we stood on business, we don't need to do the original.
+		// we stood on business, we don't need to do the original.
 		regs->ip = (unsigned long) boringpost;
 		return 1;
 	}	
