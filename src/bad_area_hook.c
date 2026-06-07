@@ -107,7 +107,7 @@ map_new_page:
 	}
 
 	local_irq_disable();
-	return -1;
+	return 1;
 }
 
 int replace_bad_area_nosemaphore(struct kprobe *kp, struct pt_regs *regs){
@@ -115,7 +115,7 @@ int replace_bad_area_nosemaphore(struct kprobe *kp, struct pt_regs *regs){
 	if (current_sg2_status == SG2_STATUS_DISABLED)
 		return 0;
 
-	else if (current_sg2_status == SG2_STATUS_PER_PROCESS_ENABLED && !is_sg2_enabled_for_pid(current->pid))
+	else if (current_sg2_status == SG2_STATUS_PER_PROCESS_ENABLED && !is_sg2_enabled_for_pid(current->tgid))
 		return 0;
 
 	struct pt_regs *original = (struct pt_regs *) regs_get_kernel_argument(regs, 0);

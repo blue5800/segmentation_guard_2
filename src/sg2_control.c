@@ -50,12 +50,12 @@ int control_sg2(struct kprobe *kp, struct pt_regs *regs){
 
 // for these ones, since it only affects the current process ill just let them choose.
 			case SG2_CMD_ENABLE_THIS_PID:
-				regs->ax = enable_sg2_for_pid(current->pid);
+				regs->ax = enable_sg2_for_pid(current->tgid);
 				ret = 1;
 				break;
 
 			case SG2_CMD_DISABLE_THIS_PID:
-				disable_sg2_for_pid(current->pid);
+				disable_sg2_for_pid(current->tgid);
 				regs->ax = 0;
 				ret = 1;
 				break;

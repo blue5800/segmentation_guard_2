@@ -30,6 +30,8 @@ The following commands are supported:
 | `SG2_CMD_ENABLE_THIS_PID` | 5 | Enables SG2 for the calling process. | None |
 | `SG2_CMD_DISABLE_THIS_PID` | 6 | Disables SG2 for the calling process. | None |
 
+**Note:** "process" refers to a thread group, rather than an individual thread.
+
 ### Return Values
 
 *   For `SG2_CMD_STATUS`, it returns one of the following status values:

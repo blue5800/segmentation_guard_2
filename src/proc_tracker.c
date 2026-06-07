@@ -36,7 +36,8 @@ void disable_sg2_for_pid(pid_t pid) {
 }
 
 int cleanup_proc_tracker_on_exit(struct kprobe *kp, struct pt_regs *regs){
-	pid_t pid = current->pid;
-	disable_sg2_for_pid(pid);
+	if (is_sg2_enabled_for_pid(current->tgid) && thread_group_empty(current)){
+		disable_sg2_for_pid(current->tgid);
+	}
 	return 0;
 }
