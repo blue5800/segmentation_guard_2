@@ -1,5 +1,6 @@
 #include "sg2_control.h"
 #include "bad_area_hook.h"
+#include "proc_tracker.h"
 
 int control_sg2(struct kprobe *kp, struct pt_regs *regs){
 	int magic1 = regs_get_kernel_argument(regs, 0);
@@ -36,14 +37,26 @@ int control_sg2(struct kprobe *kp, struct pt_regs *regs){
 				ret = 1;
 				break;
 
+			case SG2_CMD_PER_PROCESS_ENABLE:
+				if(!capable(CAP_SYS_ADMIN)){
+					regs->ax = -EPERM;
+					ret = 1;
+					break;
+				}
+				current_sg2_status = SG2_STATUS_PER_PROCESS_ENABLED;
+				regs->ax = 1;
+				ret = 1;
+				break;
+
 // for these ones, since it only affects the current process ill just let them choose.
 			case SG2_CMD_ENABLE_THIS_PID:
-				regs->ax = -ENOSYS;
+				regs->ax = enable_sg2_for_pid(current->pid);
 				ret = 1;
 				break;
 
 			case SG2_CMD_DISABLE_THIS_PID:
-				regs->ax = -ENOSYS;
+				disable_sg2_for_pid(current->pid);
+				regs->ax = 0;
 				ret = 1;
 				break;
 		}

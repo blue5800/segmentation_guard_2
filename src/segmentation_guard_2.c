@@ -5,7 +5,7 @@
 
 #include "bad_area_hook.h"
 #include "sg2_control.h"
-
+#include "proc_tracker.h"
 
 unsigned long bad_area_nosemaphore_addr, do_mprotect_pkey_addr, do_mmap_addr;
 
@@ -35,14 +35,9 @@ struct kprobe sys_reboot_kp = {
 	.post_handler = boringpost,
 };
 
-static int tmp(struct kprobe *kp, struct pt_regs *regs) {
-	printk(KERN_INFO "Segmentation Guard 2: Process %s (PID %d) is exiting\n", current->comm, current->pid);
-	return 0;
-}
-
 struct kprobe do_exit_kp = {
 	.symbol_name = "do_exit",
-	.pre_handler = tmp,
+	.pre_handler = cleanup_proc_tracker_on_exit,
 };
 
 do_mprotect_pkey_t do_mprotect_pkey_fn;
@@ -51,7 +46,7 @@ do_mmap_t do_mmap_fn;
 enum sg2_status current_sg2_status = SG2_STATUS_GLOBAL_ENABLED;
 
 static int segmentation_guard_2_init(void) {
-	printk(KERN_INFO "Segmentation Guard 2: Module loaded successfully\n");
+	init_proc_tracker();
 
 	do_mprotect_pkey_addr = lookup_kallsyms_lookup_name("do_mprotect_pkey");
 	do_mmap_addr = lookup_kallsyms_lookup_name("do_mmap");
@@ -91,6 +86,7 @@ static void segmentation_guard_2_exit(void) {
 	unregister_kprobe(&bad_area_nosemaphore_kp);
 	unregister_kprobe(&sys_reboot_kp);
 	unregister_kprobe(&do_exit_kp);
+	exit_proc_tracker();
 	printk(KERN_INFO "Segmentation Guard 2: Module unloaded successfully\n");
 }
 
