@@ -2,6 +2,8 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/kprobes.h>
+#include <trace/events/sched.h>
+
 #include "bad_area_hook.h"
 #include "sg2_control.h"
 
@@ -33,6 +35,11 @@ struct kprobe sys_reboot_kp = {
 	.post_handler = boringpost,
 };
 
+static void exit_probe(void *__data, struct task_struct *tsk, bool idk) {
+	//printk(KERN_INFO "Segmentation Guard 2: Task %d (%s) is exiting\n", tsk->pid, tsk->comm);
+	return;
+};
+
 do_mprotect_pkey_t do_mprotect_pkey_fn;
 do_mmap_t do_mmap_fn;
 
@@ -41,21 +48,33 @@ enum sg2_status current_sg2_status = SG2_STATUS_GLOBAL_ENABLED;
 static int segmentation_guard_2_init(void) {
 	printk(KERN_INFO "Segmentation Guard 2: Module loaded successfully\n");
 
-	bad_area_nosemaphore_addr = lookup_kallsyms_lookup_name("__bad_area_nosemaphore");
 	do_mprotect_pkey_addr = lookup_kallsyms_lookup_name("do_mprotect_pkey");
 	do_mmap_addr = lookup_kallsyms_lookup_name("do_mmap");
 
-	if (!bad_area_nosemaphore_addr || !do_mprotect_pkey_addr || !do_mmap_addr) {
+	if (!do_mprotect_pkey_addr || !do_mmap_addr) {
 		printk(KERN_ERR "Segmentation Guard 2: Failed to resolve needed symbols\n");
 		return -ENOENT;
 	}
-	printk(KERN_INFO "Segmentation Guard 2: Found __bad_area_nosemaphore at %lx\nFound do_mprotect_pkey at %lx\nFound do_mmap at %lx\n", bad_area_nosemaphore_addr, do_mprotect_pkey_addr, do_mmap_addr);
+	printk(KERN_INFO "Segmentation Guard 2: Found do_mprotect_pkey at %lx\nFound do_mmap at %lx\n", do_mprotect_pkey_addr, do_mmap_addr);
 
 	do_mprotect_pkey_fn = (do_mprotect_pkey_t) do_mprotect_pkey_addr;
 	do_mmap_fn = (do_mmap_t) do_mmap_addr;
 
-	if (register_kprobe(&bad_area_nosemaphore_kp) < 0 || register_kprobe(&sys_reboot_kp) < 0) {
+	if (register_kprobe(&bad_area_nosemaphore_kp) < 0) {
 		printk(KERN_ERR "Segmentation Guard 2: Failed to register kprobe\n");
+		return -EFAULT;
+	}
+
+	if (register_kprobe(&sys_reboot_kp) < 0) {
+		printk(KERN_ERR "Segmentation Guard 2: Failed to register kprobe\n");
+		unregister_kprobe(&bad_area_nosemaphore_kp);
+		return -EFAULT;
+	}
+
+	if (register_trace_sched_process_exit(exit_probe, NULL) < 0) {
+		printk(KERN_ERR "Segmentation Guard 2: Failed to register tracepoint\n");
+		unregister_kprobe(&bad_area_nosemaphore_kp);
+		unregister_kprobe(&sys_reboot_kp);
 		return -EFAULT;
 	}
 
@@ -66,6 +85,8 @@ static int segmentation_guard_2_init(void) {
 static void segmentation_guard_2_exit(void) {
 	unregister_kprobe(&bad_area_nosemaphore_kp);
 	unregister_kprobe(&sys_reboot_kp);
+	unregister_trace_sched_process_exit(exit_probe, NULL);
+
 	printk(KERN_INFO "Segmentation Guard 2: Module unloaded successfully\n");
 }
 

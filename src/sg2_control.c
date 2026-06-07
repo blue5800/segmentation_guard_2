@@ -1,4 +1,5 @@
 #include "sg2_control.h"
+#include "bad_area_hook.h"
 
 int control_sg2(struct kprobe *kp, struct pt_regs *regs){
 	int magic1 = regs_get_kernel_argument(regs, 0);
