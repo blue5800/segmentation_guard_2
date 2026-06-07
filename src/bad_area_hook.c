@@ -43,17 +43,17 @@ static int our_bad_area_nosemaphore(struct pt_regs *regs, unsigned long error_co
 	}
 	
 	// its getting serious now.
-	local_irq_enable();
 	printk(KERN_INFO "Segmentation Guard 2: Caught a usermode segmentation fault at address 0x%lx with error code 0x%lx\n", address, error_code);
-	
+
+	local_irq_enable();
 	mmap_read_lock(current->mm);
 	struct vm_area_struct *vma = find_vma(current->mm, address);
-	mmap_read_unlock(current->mm);
 
-	// trust me, do NOT unlock any later than this. i've tried :3
 	if (!vma || address < vma->vm_start) {
+		mmap_read_unlock(current->mm);
 		goto map_new_page;
 	}
+	mmap_read_unlock(current->mm);
 
 	//no locking here, mprotect does it internally. probs.
 	ret = do_mprotect_pkey_fn(
@@ -66,6 +66,7 @@ static int our_bad_area_nosemaphore(struct pt_regs *regs, unsigned long error_co
 	if (ret) {
 		goto map_new_page;
 	}
+
 	local_irq_disable();
 	return 1;
 	
@@ -77,6 +78,7 @@ map_new_page:
 		local_irq_disable();
 		return 0;
 	}
+
 	//note: if the user isn't root they don't have this. we need this to map pages below the kernel's minimum address.
 	cap_raise(new_cred->cap_effective, CAP_SYS_RAWIO);
 	old_cred = override_creds(new_cred);
