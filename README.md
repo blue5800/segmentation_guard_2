@@ -31,6 +31,12 @@ SG2 also uses `kprobes` to intercept the `sys_reboot` syscall to use this as a c
 
 SG2 hooks `do_exit` to remove dead processes from its internal state, preventing reused PIDs from being automatically "guarded"
 
+## Control Interface
+
+SG2 can be controlled from userspace via a hijacked `reboot` system call. This allows you to check the status of the driver, enable/disable it globally, or enable/disable it for specific processes.
+
+For detailed information on how to interact with the driver programmatically, see [docs/INTERFACE.md](docs/INTERFACE.md).
+
 ## Build & Installation
 
 *Requires kernel headers, a kernel with CONFIG_KPROBES, and a compiler.*
