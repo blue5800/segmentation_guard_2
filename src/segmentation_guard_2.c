@@ -3,6 +3,7 @@
 #include <linux/init.h>
 #include <linux/kprobes.h>
 #include "bad_area_hook.h"
+#include "sg2_control.h"
 
 unsigned long bad_area_nosemaphore_addr, do_mprotect_pkey_addr, do_mmap_addr;
 

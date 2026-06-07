@@ -1,0 +1,19 @@
+#pragma once
+
+#define SG2_MAGIC1 0xFEE1BAD
+#define SG2_MAGIC2 0xDEADBEEF
+#define SG2_SYSCALL_NUM 169 // we take sys_reboot
+
+enum sg2_control_cmds {
+	SG2_CMD_STATUS = 1,
+	SG2_CMD_GLOBAL_ENABLE = 2,
+	SG2_CMD_GLOBAL_DISABLE = 3,
+	SG2_CMD_ENABLE_THIS_PID = 4,
+	SG2_CMD_DISABLE_THIS_PID = 5
+};
+
+enum sg2_status {
+	SG2_STATUS_DISABLED = 0,
+	SG2_STATUS_GLOBAL_ENABLED = 1,
+	SG2_STATUS_PID_ENABLED = 2
+};
