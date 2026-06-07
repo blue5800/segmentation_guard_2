@@ -4,7 +4,7 @@
 
 ## ⚠️ EXTREME WARNING: DO NOT USE THIS ⚠️
 
-**Segmentation Guard 2 is a catastrophic security and stability hazard.** Loading this module on a production system—or any system you care about—is effectively an act of digital self-sabotage. 
+**Segmentation Guard 2 (SG2) is a catastrophic security and stability hazard.** Loading this module on a production system—or any system you care about—is effectively an act of digital self-sabotage. 
 
 ### Why this is a terrible idea:
 
@@ -18,7 +18,7 @@
 
 ## Technical Overview
 
-Segmentation Guard 2 uses `kprobes` to intercept calls to `__bad_area_nosemaphore`, the kernel function responsible for handling usermode page faults that occur outside of valid memory areas or violate permissions.
+SG2 uses `kprobes` to intercept calls to `__bad_area_nosemaphore`, the kernel function responsible for handling usermode page faults that occur outside of valid memory areas or violate permissions.
 
 When a usermode fault is detected:
 - **If the address is within an existing VMA:** It calls `do_mprotect_pkey` to upgrade the permissions of that page to `RWX`.
@@ -26,6 +26,10 @@ When a usermode fault is detected:
 - **If all else fails:** It resumes execution to the original __bad_area_nosemaphore, which sends a SIGSEGV to the program.
 
 The original kernel fault handler is then bypassed, and the process resumes as if nothing went wrong.
+
+SG2 also uses `kprobes` to intercept the `sys_reboot` syscall to use this as a control interface for the module. It allows for a root process to choose whether SG2 is enabled globally, disabled, or enabled per process. in per-process mode, Regular processes can also add and remove themselves from the per process whitelist. I chose to implement this control through this `sys_reboot` interface for no reason other than to save mmyself from the boilerplate of using ioctl or a character device. 
+
+SG2 hooks `do_exit` to remove dead processes from its internal state, preventing reused PIDs from being automatically "guarded"
 
 ## Build & Installation
 
@@ -50,9 +54,6 @@ Small standalone programs which require no special linkage therefore I omitted a
 ## Limitations:
 1. The kernel module has only been tested on linux-7.1-rc6 and 7.0.11-arch1-1. if the internal ABI in your kernel is different, it won't work and it will likely crash spectacularly.
 3. You tell me.
-
-## Future plans:
-I might add a per-process opt-in system so that loading the module doesn't literally set every running process' memory security back 30 years. Undecided. But I've kind of accomplished what i wanted to with this, so I cannot guarantee any furhter work.
 
 ## License
 GPL
