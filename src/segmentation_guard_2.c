@@ -2,10 +2,10 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/kprobes.h>
-#include <trace/events/sched.h>
 
 #include "bad_area_hook.h"
 #include "sg2_control.h"
+
 
 unsigned long bad_area_nosemaphore_addr, do_mprotect_pkey_addr, do_mmap_addr;
 
@@ -35,9 +35,14 @@ struct kprobe sys_reboot_kp = {
 	.post_handler = boringpost,
 };
 
-static void exit_probe(void *__data, struct task_struct *tsk, bool idk) {
-	//printk(KERN_INFO "Segmentation Guard 2: Task %d (%s) is exiting\n", tsk->pid, tsk->comm);
-	return;
+static int tmp(struct kprobe *kp, struct pt_regs *regs) {
+	printk(KERN_INFO "Segmentation Guard 2: Process %s (PID %d) is exiting\n", current->comm, current->pid);
+	return 0;
+}
+
+struct kprobe do_exit_kp = {
+	.symbol_name = "do_exit",
+	.pre_handler = tmp,
 };
 
 do_mprotect_pkey_t do_mprotect_pkey_fn;
@@ -71,7 +76,7 @@ static int segmentation_guard_2_init(void) {
 		return -EFAULT;
 	}
 
-	if (register_trace_sched_process_exit(exit_probe, NULL) < 0) {
+	if (register_kprobe(&do_exit_kp) < 0) {
 		printk(KERN_ERR "Segmentation Guard 2: Failed to register tracepoint\n");
 		unregister_kprobe(&bad_area_nosemaphore_kp);
 		unregister_kprobe(&sys_reboot_kp);
@@ -85,8 +90,7 @@ static int segmentation_guard_2_init(void) {
 static void segmentation_guard_2_exit(void) {
 	unregister_kprobe(&bad_area_nosemaphore_kp);
 	unregister_kprobe(&sys_reboot_kp);
-	unregister_trace_sched_process_exit(exit_probe, NULL);
-
+	unregister_kprobe(&do_exit_kp);
 	printk(KERN_INFO "Segmentation Guard 2: Module unloaded successfully\n");
 }
 
