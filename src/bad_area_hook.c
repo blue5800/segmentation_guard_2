@@ -45,7 +45,6 @@ static int our_bad_area_nosemaphore(struct pt_regs *regs, unsigned long error_co
 	// its getting serious now.
 	printk(KERN_INFO "Segmentation Guard 2: Caught a usermode segmentation fault at address 0x%lx with error code 0x%lx\n", address, error_code);
 
-	local_irq_enable();
 	mmap_read_lock(current->mm);
 	struct vm_area_struct *vma = find_vma(current->mm, address);
 
@@ -67,7 +66,6 @@ static int our_bad_area_nosemaphore(struct pt_regs *regs, unsigned long error_co
 		goto map_new_page;
 	}
 
-	local_irq_disable();
 	return 1;
 	
 map_new_page:
@@ -105,18 +103,20 @@ map_new_page:
 		local_irq_disable();
 		return 0;
 	}
-
-	local_irq_disable();
 	return 1;
 }
 
 int replace_bad_area_nosemaphore(struct kprobe *kp, struct pt_regs *regs){
+/* not exactly safe to do this in kprobe context, but it beats "BUG: scheduling while atomic" :3
+ * you can still cause it. unavoidable in this design. 
+ */
+	local_irq_enable();
+	int ret = 0;
 
-	if (current_sg2_status == SG2_STATUS_DISABLED)
-		return 0;
-
-	else if (current_sg2_status == SG2_STATUS_PER_PROCESS_ENABLED && !is_sg2_enabled_for_pid(current->tgid))
-		return 0;
+	if (current_sg2_status == SG2_STATUS_DISABLED 
+	|| (current_sg2_status == SG2_STATUS_PER_PROCESS_ENABLED && !is_sg2_enabled_for_pid(current->tgid))
+	)
+		goto finish;
 
 	struct pt_regs *original = (struct pt_regs *) regs_get_kernel_argument(regs, 0);
 	unsigned long error_code = regs_get_kernel_argument(regs, 1);
@@ -128,8 +128,10 @@ int replace_bad_area_nosemaphore(struct kprobe *kp, struct pt_regs *regs){
 	if(our_bad_area_nosemaphore(original, error_code, address, pkey, si_code)){
 		// we stood on business, we don't need to do the original.
 		regs->ip = (unsigned long) boringpost;
-		return 1;
-	}	
-	return 0;
+		ret = 1;
+	}
+finish:
+	local_irq_disable();
+	return ret;
 }
 
