@@ -41,8 +41,8 @@ static int our_bad_area_nosemaphore(struct pt_regs *regs, unsigned long error_co
 		// not our problem, not dealing with it.
 		return 0;
 	}
-	
-	// its getting serious now.
+// beyond this point, we are gaming
+	local_irq_enable();
 	printk(KERN_INFO "Segmentation Guard 2: Caught a usermode segmentation fault at address 0x%lx with error code 0x%lx\n", address, error_code);
 
 	mmap_read_lock(current->mm);
@@ -73,7 +73,6 @@ map_new_page:
 	new_cred = prepare_creds();
 	if (!new_cred) {
 		printk(KERN_ERR "Segmentation Guard 2: Failed to prepare new credentials.\n");
-		local_irq_disable();
 		return 0;
 	}
 
@@ -100,17 +99,35 @@ map_new_page:
 
 	if (IS_ERR_VALUE(mmap_res)) {
 		printk(KERN_ERR "Segmentation Guard 2: Couldn't fix segmentation fault at address %lx with error code %lx\n", address, error_code);
-		local_irq_disable();
 		return 0;
 	}
 	return 1;
 }
 
+#ifdef CONFIG_FUNCTION_TRACER
+void notrace sg2_ftrace_handler(unsigned long ip, unsigned long parent_ip, struct ftrace_ops *ops, struct ftrace_regs *regs) {
+
+	if (current_sg2_status == SG2_STATUS_DISABLED 
+	|| (current_sg2_status == SG2_STATUS_PER_PROCESS_ENABLED && !is_sg2_enabled_for_pid(current->tgid))
+	)
+		return;
+
+	struct pt_regs *kernel_regs = (struct pt_regs *) ftrace_regs_get_argument(regs, 0);
+	unsigned long error_code = ftrace_regs_get_argument(regs, 1);
+	unsigned long address = ftrace_regs_get_argument(regs, 2);
+	u32 pkey = ftrace_regs_get_argument(regs, 3);
+	int si_code = ftrace_regs_get_argument(regs, 4);
+
+	if(our_bad_area_nosemaphore(kernel_regs, error_code, address, pkey, si_code)){
+		// we stood on business, we don't need to do the original.
+		ftrace_regs_set_instruction_pointer(regs, (unsigned long) boringpost);
+	}
+	return;
+}
+
+#else
+
 int replace_bad_area_nosemaphore(struct kprobe *kp, struct pt_regs *regs){
-/* not exactly safe to do this in kprobe context, but it beats "BUG: scheduling while atomic" :3
- * you can still cause it. unavoidable in this design. 
- */
-	local_irq_enable();
 	int ret = 0;
 
 	if (current_sg2_status == SG2_STATUS_DISABLED 
@@ -124,7 +141,6 @@ int replace_bad_area_nosemaphore(struct kprobe *kp, struct pt_regs *regs){
 	u32 pkey = regs_get_kernel_argument(regs, 3);
 	int si_code = regs_get_kernel_argument(regs, 4);
 
-
 	if(our_bad_area_nosemaphore(original, error_code, address, pkey, si_code)){
 		// we stood on business, we don't need to do the original.
 		regs->ip = (unsigned long) boringpost;
@@ -134,4 +150,4 @@ finish:
 	local_irq_disable();
 	return ret;
 }
-
+#endif

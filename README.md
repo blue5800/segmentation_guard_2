@@ -12,7 +12,7 @@
 2.  **Hides Critical Bugs:** Segmentation faults are a defense mechanism. They tell you when a program is broken. By "fixing" them, you allow broken programs to continue running in a corrupted state, leading to silent data corruption that is significantly harder to debug than a simple crash.
 3.  **W^X Violation:** It maps memory as `PROT_READ | PROT_WRITE | PROT_EXEC`. This violates the fundamental security principle of "Write XOR Execute," making it trivial for an attacker to execute shellcode.
 4.  **Resource Exhaustion:** A program with a memory leak or an infinite loop that touches new memory will no longer crash. Instead, it will keep asking the kernel for more pages until your system runs out of memory (OOM).
-5.  **Kernel Instability:** The module hooks deep into the x86 page fault handling path (`__bad_area_nosemaphore`) using kprobes. It manually toggles interrupts and calls complex memory management functions (`do_mmap`, `do_mprotect_pkey`) from contexts where they may not be safe, potentially leading to kernel panics or deadlocks.
+5.  **Kernel Instability:** The module hooks deep into the x86 page fault handling path (`__bad_area_nosemaphore`). While it now prefers the modern `ftrace` with `IPMODIFY` for stability, it still falls back to `kprobes` if ftrace is unavailable. It manually calls complex memory management functions (`do_mmap`, `do_mprotect_pkey`) from contexts where they may not be safe, potentially leading to kernel panics or deadlocks.
 
 ### Why i built it anyways:
 
@@ -24,14 +24,19 @@
 
 ## Technical Overview
 
-SG2 uses `kprobes` to intercept calls to `__bad_area_nosemaphore`, the kernel function responsible for handling usermode page faults that occur outside of valid memory areas or violate permissions.
+SG2 intercepts calls to `__bad_area_nosemaphore`, the kernel function responsible for handling usermode page faults that occur outside of valid memory areas or violate permissions.
+
+### Hooking Mechanism
+The module employs a tiered hooking strategy to achieve function hijacking:
+- **Primary (ftrace + IPMODIFY):** On kernels with `CONFIG_FUNCTION_TRACER` and `CONFIG_DYNAMIC_FTRACE_WITH_REGS`, SG2 uses the ftrace framework with the `IPMODIFY` flag. This allows for a clean redirect of the instruction pointer via `ftrace_regs_set_instruction_pointer` without the overhead or instability of breakpoint-based kprobes.
+- **Fallback (kprobes):** If ftrace is unavailable, it falls back to a standard `kprobe` on the same symbol.
 
 When a usermode fault is detected:
 - **If the address is within an existing VMA:** It calls `do_mprotect_pkey` to upgrade the permissions of that page to `RWX`.
 - **If the address is unmapped:** It calls `do_mmap` to create a new `MAP_FIXED` anonymous mapping at that address, also with `RWX` permissions.
 - **If all else fails:** It resumes execution to the original __bad_area_nosemaphore, which sends a SIGSEGV to the program.
 
-The original kernel fault handler is then bypassed, and the process resumes as if nothing went wrong.
+The original kernel fault handler is bypassed by redirecting the instruction pointer to a "landing pad" (`boringpost`), and the process resumes as if nothing went wrong.
 
 SG2 also uses `kprobes` to intercept the `sys_reboot` syscall to use this as a control interface for the module. I chose to implement this control through this `sys_reboot` interface for no reason other than to save mmyself from the boilerplate of using ioctl or a character device. 
 
