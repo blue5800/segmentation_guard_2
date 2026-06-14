@@ -73,8 +73,9 @@ Small C program which can be used to control and read the active SG2 mode.
 
 ## Limitations:
 1. The kernel module has only been tested on linux-7.1-rc6 and 7.0.11-arch1-1. if the internal ABI in your kernel is different, it won't work and it will likely crash spectacularly.
-2. SG2 only works on specific architectures. I only support X86_64, it will likely work on X86 but I have not tested it. Anything else is guaranteed to not work. 
-3. You tell me.
+2. SG2 only works on specific architectures. I only support X86_64, it might (?) work on X86 but I have not tested it. Anything else is guaranteed to not work. 
+3. Modern intel processors with intel CET features will not work with this driver. This is because the unexported functions that we call indirectly (`do_mmap` and `do_mprotect_pkey`) do not have an ENDBR instruction at the prologue, since they aren't called indirectly within the kernel and are not meant to be called outside of their compilation units. I tried dynamically mapping shellcode trampolines, which worked, but becomes reliant on unexported features, which kinda creates a horrible catch-22 situation, and i want this driver to remain an LKM. I also tried assembly wrappers to do a NOTRACK jump to the function pointers, but these get ignored in the kernel. I thought about doing a push-then-ret wrapper for the functions, and while this would get around IBT, it would also fail because of hardware shadow stack. My only remaining idea was to try to manually map an executable page next to the module but again, the init_mm struct is unexported. I considered inspecting instructions which I know use this and pattern scanning the instructions to find the address for that but at that point I decided that this whole idea was too ugly to implement. I guess Intel's thought of everything. I would say "if only Intel could see that legitimate drivers break under CET" but honestly, taking a step back for a sec, I have never seen a more compelling argument for hardware CFI than this driver not working. Anyways, if you, the reader, have any better ideas, please let me know :3. PRs are welcome!  
+4. You tell me.
 
 ## License
 GPL

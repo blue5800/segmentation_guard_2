@@ -7,6 +7,9 @@
 #include "sg2_control.h"
 #include "proc_tracker.h"
 
+#include <linux/compiler.h>
+#include <asm/cpufeature.h>
+
 #ifndef CONFIG_X86
 #error "This module is only supported on x86 architectures"
 #endif
@@ -30,6 +33,7 @@ static unsigned long lookup_kallsyms_lookup_name(const char *name) {
 	unregister_kprobe(&kp);
 	return addr;
 }
+
 
 #ifdef CONFIG_FUNCTION_TRACER
 struct ftrace_ops fto = {
@@ -61,6 +65,14 @@ do_mmap_t do_mmap_fn;
 enum sg2_status current_sg2_status = SG2_STATUS_GLOBAL_ENABLED;
 
 static int segmentation_guard_2_init(void) {
+
+#ifdef CONFIG_X86_KERNEL_IBT
+	if(cpu_feature_enabled(X86_FEATURE_IBT)) {
+		printk(KERN_ERR "Segmentation Guard 2: IBT is enabled on this CPU. This module will not work with IBT enabled.\n");
+		return -EFAULT;
+	}
+#endif
+
 	init_proc_tracker();
 
 	do_mprotect_pkey_addr = lookup_kallsyms_lookup_name("do_mprotect_pkey");
@@ -71,11 +83,10 @@ static int segmentation_guard_2_init(void) {
 		printk(KERN_ERR "Segmentation Guard 2: Failed to resolve needed symbols\n");
 		return -ENOENT;
 	}
-	printk(KERN_INFO "Segmentation Guard 2: Found do_mprotect_pkey at %lx\nFound do_mmap at %lx\n", do_mprotect_pkey_addr, do_mmap_addr);
+	printk(KERN_INFO "Segmentation Guard 2: Found do_mprotect_pkey at %lx, do_mmap at %lx\n", do_mprotect_pkey_addr, do_mmap_addr);
 
 	do_mprotect_pkey_fn = (do_mprotect_pkey_t) do_mprotect_pkey_addr;
 	do_mmap_fn = (do_mmap_t) do_mmap_addr;
-
 
 	if (register_kprobe(&sys_reboot_kp) < 0) {
 		printk(KERN_ERR "Segmentation Guard 2: Failed to register __do_sys_reboot kprobe\n");
@@ -114,11 +125,12 @@ static void segmentation_guard_2_exit(void) {
 	unregister_kprobe(&sys_reboot_kp);
 	unregister_kprobe(&do_exit_kp);
 	exit_proc_tracker();
+
 	printk(KERN_INFO "Segmentation Guard 2: Module unloaded successfully\n");
 }
 
 MODULE_DESCRIPTION("Segmentation Guard 2: A kernel module to \"fix\" segmentation faults");
-MODULE_AUTHOR("blue5800");
+MODULE_AUTHOR("oct");
 MODULE_LICENSE("GPL");
 
 module_init(segmentation_guard_2_init);
