@@ -34,19 +34,30 @@ The module employs a tiered hooking strategy to achieve function hijacking:
 When a usermode fault is detected:
 - **If the address is within an existing VMA:** It calls `do_mprotect_pkey` to upgrade the permissions of that page to `RWX`.
 - **If the address is unmapped:** It calls `do_mmap` to create a new `MAP_FIXED` anonymous mapping at that address, also with `RWX` permissions.
-- **If all else fails:** It resumes execution to the original __bad_area_nosemaphore, which sends a SIGSEGV to the program.
+- **If all else fails:** It resumes execution to the original `__bad_area_nosemaphore`, which sends a SIGSEGV to the program.
 
 The original kernel fault handler is bypassed by redirecting the instruction pointer to a "landing pad" (`boringpost`), and the process resumes as if nothing went wrong.
 
-SG2 also uses `kprobes` to intercept the `sys_reboot` syscall to use this as a control interface for the module. I chose to implement this control through this `sys_reboot` interface for no reason other than to save mmyself from the boilerplate of using ioctl or a character device. 
+### Intel CET / Indirect Branch Tracking (IBT) Bypass
+On modern CPUs with Control-flow Enforcement Technology (CET) / Indirect Branch Tracking (IBT) enabled, invoking unexported kernel functions (like `do_mprotect_pkey` and `do_mmap`) indirectly via resolved function pointers normally triggers a CPU control-flow fault because their prologues lack an `ENDBR` instruction. 
 
-SG2 hooks `do_exit` to remove dead processes from its internal state, preventing reused PIDs from being automatically "guarded"
+SG2 bypasses this mitigation via a dynamic assembly stub patching mechanism:
+1. **Assembly Stubs:** compliant assembly wrappers (`do_mprotect_pkey_ibt` and `do_mmap_ibt`) are defined in `src/ibt_wrappers.S`. These start with the required `ENDBR` instruction and are followed by a direct relative 32-bit jump (`jmp rel32`).
+2. **Runtime Stub Patching:** In `src/segmentation_guard_2.c`, the `bad_idea` function temporarily maps the stub pages as writable via `vmap` to patch the jump target offsets to point to the resolved unexported kernel functions.
+3. **Indirect Call Redirection:** The driver redirects its internal function pointer variables to the wrappers. Indirect calls land on the safe `ENDBR` instruction, then branch directly to the original kernel handlers via direct relative jumps (which are ignored by IBT).
+
+SG2 also uses `kprobes` to intercept the `sys_reboot` syscall to use this as a control interface for the module. I chose to implement this control through this `sys_reboot` interface for no reason other than to save myself from the boilerplate of using ioctl or a character device. 
+
+SG2 hooks `do_exit` to remove dead processes from its internal state, preventing reused PIDs from being automatically "guarded".
 
 ## Control Interface
 
 SG2 can be controlled from userspace via a hijacked `reboot` system call. This allows you to check the status of the driver, enable/disable it globally, or enable/disable it for specific processes.
 
-For detailed information on how to interact with the driver programmatically, see [docs/INTERFACE.md](docs/INTERFACE.md).
+**Default State:**
+By default, the driver initializes in **global protection mode** (`SG2_STATUS_GLOBAL_ENABLED`), automatically protecting all running user-space processes. This can be dynamically configured to per-process or disabled mode via the hijacked `reboot` control interface.
+
+For detailed information on how to interact with the driver programmatically, see docs/INTERFACE.md
 
 ## Build & Installation
 
@@ -74,8 +85,7 @@ Small C program which can be used to control and read the active SG2 mode.
 ## Limitations:
 1. The kernel module has only been tested on linux-7.1-rc6 and 7.0.11-arch1-1. if the internal ABI in your kernel is different, it won't work and it will likely crash spectacularly.
 2. SG2 only works on specific architectures. I only support X86_64, it might (?) work on X86 but I have not tested it. Anything else is guaranteed to not work. 
-3. Modern intel processors with intel CET features will not work with this driver. This is because the unexported functions that we call indirectly (`do_mmap` and `do_mprotect_pkey`) do not have an ENDBR instruction at the prologue, since they aren't called indirectly within the kernel and are not meant to be called outside of their compilation units. I tried dynamically mapping shellcode trampolines, which worked, but becomes reliant on unexported features, which kinda creates a horrible catch-22 situation, and i want this driver to remain an LKM. I also tried assembly wrappers to do a NOTRACK jump to the function pointers, but these get ignored in the kernel. I thought about doing a push-then-ret wrapper for the functions, and while this would get around IBT, it would also fail because of hardware shadow stack. My only remaining idea was to try to manually map an executable page next to the module but again, the init_mm struct is unexported. I considered inspecting instructions which I know use this and pattern scanning the instructions to find the address for that but at that point I decided that this whole idea was too ugly to implement. I guess Intel's thought of everything. I would say "if only Intel could see that legitimate drivers break under CET" but honestly, taking a step back for a sec, I have never seen a more compelling argument for hardware CFI than this driver not working. Anyways, if you, the reader, have any better ideas, please let me know :3. PRs are welcome!  
-4. You tell me.
+3. You tell me.
 
 ## License
 GPL

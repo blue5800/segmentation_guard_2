@@ -3,12 +3,17 @@
 #include <linux/init.h>
 #include <linux/kprobes.h>
 
+
 #include "bad_area_hook.h"
 #include "sg2_control.h"
 #include "proc_tracker.h"
 
 #include <linux/compiler.h>
+#include <linux/errno.h>
 #include <asm/cpufeature.h>
+#include <linux/preempt.h>
+#include <linux/mm.h>
+#include <linux/vmalloc.h>
 
 #ifndef CONFIG_X86
 #error "This module is only supported on x86 architectures"
@@ -34,6 +39,69 @@ static unsigned long lookup_kallsyms_lookup_name(const char *name) {
 	return addr;
 }
 
+#ifdef CONFIG_X86_KERNEL_IBT
+static int patch_rel32_jump(void *stub, void *target, void *orig)
+{
+	s64 disp = (s64)((long)target - ((long)orig + 9));
+
+	if ((s64)(s32)disp != disp)
+		return -ERANGE;
+
+	*(s32 *)((char *)stub + 5) = (s32)disp;
+	return 0;
+}
+
+static int patch_stub(void * stub, void *target)
+{
+	int ret = 0;
+	void *addr = (void *)((unsigned long)stub & PAGE_MASK);
+	struct page *pg;
+	pg = vmalloc_to_page(addr);
+
+	if (!pg) {
+		printk(KERN_ERR "Segmentation Guard 2: Failed to get page for stub %p\n", stub);
+		return -ENOMEM;
+	}
+
+	void *writable = vmap(&pg, 1, VM_MAP, PAGE_KERNEL);
+	if (!writable) {
+		printk(KERN_ERR "Segmentation Guard 2: Failed to vmap page for stub %p\n", stub);
+		return -ENOMEM;
+	}
+
+	preempt_disable();
+	local_irq_disable();
+	if (patch_rel32_jump(writable + ((unsigned long)stub & ~PAGE_MASK), target, stub)) {
+		ret = -ERANGE;
+	}
+	local_irq_enable();
+	preempt_enable();
+	vunmap(writable);
+	smp_mb();
+	return ret;
+}
+
+static int bad_idea(void) {
+	printk(KERN_INFO "Segmentation guard 2: expected jump targets: do_mprotect_pkey_fn: %x, do_mmap_fn: %x\n", (int)((long)do_mprotect_pkey_fn - ((long)do_mprotect_pkey_ibt + 9)), (int)((long)do_mmap_fn - ((long)do_mmap_ibt + 9)));
+
+	printk(KERN_INFO "Segmentation guard 2: raw hexdumps of original prologue: do_mprotect_pkey_fn-0x04: %*ph, do_mmap_fn-0x04: %*ph\n", 12, (void *)do_mprotect_pkey_fn-4, 12, (void *)do_mmap_fn-4);
+
+	if(patch_stub((void *)do_mprotect_pkey_ibt, (void *)do_mprotect_pkey_fn)) {
+		printk(KERN_ERR "Segmentation Guard 2: Failed to patch do_mprotect_pkey\n");
+		return -ERANGE;
+	}
+	do_mprotect_pkey_fn = do_mprotect_pkey_ibt;
+
+	if(patch_stub((void *)do_mmap_ibt, (void *)do_mmap_fn)) {
+		printk(KERN_ERR "Segmentation Guard 2: Failed to patch do_mmap\n");
+		return -ERANGE;
+	}
+	do_mmap_fn = do_mmap_ibt;
+
+	printk(KERN_INFO "Segmentation guard 2: raw hexdumps of wrappers: do_mprotect_pkey_ibt: %*ph, do_mmap_ibt: %*ph\n", 9, (void *)do_mprotect_pkey_ibt, 9, (void *)do_mmap_ibt);
+	return 0;
+}
+#endif
 
 #ifdef CONFIG_FUNCTION_TRACER
 struct ftrace_ops fto = {
@@ -65,14 +133,6 @@ do_mmap_t do_mmap_fn;
 enum sg2_status current_sg2_status = SG2_STATUS_GLOBAL_ENABLED;
 
 static int segmentation_guard_2_init(void) {
-
-#ifdef CONFIG_X86_KERNEL_IBT
-	if(cpu_feature_enabled(X86_FEATURE_IBT)) {
-		printk(KERN_ERR "Segmentation Guard 2: IBT is enabled on this CPU. This module will not work with IBT enabled.\n");
-		return -EFAULT;
-	}
-#endif
-
 	init_proc_tracker();
 
 	do_mprotect_pkey_addr = lookup_kallsyms_lookup_name("do_mprotect_pkey");
@@ -87,6 +147,13 @@ static int segmentation_guard_2_init(void) {
 
 	do_mprotect_pkey_fn = (do_mprotect_pkey_t) do_mprotect_pkey_addr;
 	do_mmap_fn = (do_mmap_t) do_mmap_addr;
+
+#ifdef CONFIG_X86_KERNEL_IBT
+	if (bad_idea()) {
+		printk(KERN_ERR "Segmentation Guard 2: Failed to patch IBT trampolines\n");
+		return -ERANGE;
+	}
+#endif
 
 	if (register_kprobe(&sys_reboot_kp) < 0) {
 		printk(KERN_ERR "Segmentation Guard 2: Failed to register __do_sys_reboot kprobe\n");
