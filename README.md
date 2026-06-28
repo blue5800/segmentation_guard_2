@@ -2,9 +2,8 @@
 
 **A kernel module that "fixes" segmentation faults by just... giving the process what it wants.**
 
-## ⚠️ EXTREME WARNING: DO NOT USE THIS ⚠️
-
-**Segmentation Guard 2 (SG2) is a catastrophic security and stability hazard.** Loading this module on a production system—or any system you care about—is effectively an act of digital self-sabotage. 
+>[!CAUTION]
+>**Segmentation Guard 2 (SG2) is a catastrophic security hazard** Loading this module on a production system, or any system you care about, is a profoundly bad idea. This driver essentially dismantles 30 years worth of exploit mitigation, to keep your bad code running, while relying on runtime trickery to function. If you insist on loading this module regardless, I strongly advise you to change the default setting on load to `SG2_STATUS_DISABLED` or `SG2_STATUS_PER_PROCESS_ENABLED`.
 
 ### Why this is a terrible idea:
 
