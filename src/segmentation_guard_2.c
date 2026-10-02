@@ -139,11 +139,11 @@ static int segmentation_guard_2_init(void) {
 	do_mmap_addr = lookup_kallsyms_lookup_name("do_mmap");
 	__bad_area_nosemaphore_addr = lookup_kallsyms_lookup_name("__bad_area_nosemaphore");
 
-	if (!do_mprotect_pkey_addr || !do_mmap_addr) {
+	if (!do_mprotect_pkey_addr || !do_mmap_addr || !__bad_area_nosemaphore_addr) {
 		printk(KERN_ERR "Segmentation Guard 2: Failed to resolve needed symbols\n");
 		return -ENOENT;
 	}
-	printk(KERN_INFO "Segmentation Guard 2: Found do_mprotect_pkey at %lx, do_mmap at %lx\n", do_mprotect_pkey_addr, do_mmap_addr);
+	printk(KERN_INFO "Segmentation Guard 2: Found do_mprotect_pkey at 0x%lx, do_mmap at 0x%lx, __bad_area_nosemaphore at 0x%lx\n", do_mprotect_pkey_addr, do_mmap_addr, __bad_area_nosemaphore_addr);
 
 	do_mprotect_pkey_fn = (do_mprotect_pkey_t) do_mprotect_pkey_addr;
 	do_mmap_fn = (do_mmap_t) do_mmap_addr;
